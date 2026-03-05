@@ -1,0 +1,4 @@
+# Чтобы свежий контейнер не задавал вопросов про неизвестный ключ
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null

@@ -1,0 +1,27 @@
+
+
+# Ключи ssh сервера
+cp $COMMON_INSIDE_PATH/ssh/* /etc/ssh/
+chmod 600 /etc/ssh/ssh_host*
+chmod 644 /etc/ssh/ssh_host*.pub
+
+# Настройки ssh клиента
+mkdir -p ~/.ssh
+ln -s $COMMON_INSIDE_PATH/ssh-client-config ~/.ssh/config
+
+# Конфиги
+ln -s $COMMON_INSIDE_PATH/.gitconfig /home/$DOCK_USER/
+
+# VSCode server
+if [[ -n "$VSCODE_COMMIT" ]]; then
+    USER=$DOCK_USER $COMMON_INSIDE_PATH/install-vscode-server $VSCODE_COMMIT
+
+    # Расширения
+    EXT_LIST_FILE="$INSIDE_PATH/vscode-extensions-list.txt"
+    if [ -f "$EXT_LIST_FILE" ]; then
+        mapfile -t extensions < $EXT_LIST_FILE
+        USER=$DOCK_USER $COMMON_INSIDE_PATH/install-vscode-extensions "${extensions[@]}"
+    fi
+
+    chown -R $DOCK_USER /home/$DOCK_USER/.vscode-server
+fi

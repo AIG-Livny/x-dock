@@ -1,0 +1,10 @@
+#!/bin/sh
+
+echo Host path: $HOST_APP_PATH
+echo Container IP: $(hostname -I)
+
+if [ -n "$DOCK_PORTS" ]; then
+    echo Ports: $DOCK_PORTS
+fi
+
+git log --oneline -1

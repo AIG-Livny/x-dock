@@ -1,0 +1,153 @@
+DIR=$(dirname $(readlink -f $0))
+
+source $DIR/common/config
+
+IMAGE_NAME=$PREFIX-image
+
+# Генератор номера экземляра
+INSTANCE_NO_LEN=5
+instance_no_generator(){
+  date +%s%N | cut -c 7-11
+}
+
+makeenv(){
+  # Комменты не переносим в итоговый файл
+  grep -v '^#' $DIR/environment_template | envsubst > $DIR/inside/environment
+}
+
+makeimg(){
+  CONTAINER=$PREFIX-image-builder
+
+  # Чистим от старых контейнеров
+  docker rm -f $CONTAINER > /dev/null 2>&1 || true
+
+  makeenv
+
+  # Запускаем контейнер, чтобы из него сделать образ
+  docker run -dt \
+    -v $DIR/inside:$INSIDE_PATH \
+    -v $DIR/common/inside:$COMMON_INSIDE_PATH \
+    --name $CONTAINER \
+    -e INSIDE_PATH=$INSIDE_PATH \
+    -e COMMON_INSIDE_PATH=$COMMON_INSIDE_PATH \
+    -l $PREFIX \
+    $IMAGE_BASE
+
+  # Выясняем какой vscode сервер нужно поставить
+  if [[ -n "$VSCODE_COMMIT_DEFAULT" ]]; then
+    if command -v code &>/dev/null; then
+        VSCODE_COMMIT=$(code --version | sed -n '2p')
+    else
+        VSCODE_COMMIT=$VSCODE_COMMIT_DEFAULT
+    fi
+  fi
+
+  # Запускаем сборку образа
+  docker exec $CONTAINER bash -c \
+    "$INSIDE_PATH/make-image.sh '$DOCK_USER' '$DOCK_PASS' '$DOCK_UID' '$DOCK_GID' '$VSCODE_COMMIT'"
+
+  # Создаём образ, удаляем контейнер
+  #docker commit $CONTAINER $IMAGE_NAME
+  docker rm -f $CONTAINER
+}
+
+# Получить полный номер экземпляра из его части или по пути APP_NAME на хосте
+getno(){
+  # Если аргумента нет, то проверим, возможно у нас единственный экземпляр и можно взять его
+  if [ -z "$1" ]; then
+    DOCK_NAMES=$(docker container ls -a \
+      --format "{{.Names}}" \
+      --filter label=$PREFIX.instance \
+      --filter name=$PREFIX)
+
+    COUNT=$(echo "$DOCK_NAMES" | grep -c . || true)
+
+    if [ "$COUNT" -eq 1 ]; then
+      DOCK_NAME="$DOCK_NAMES"
+    elif [ "$COUNT" -gt 1 ]; then
+      echo "Multiple instances found, please specify ID:" >&2
+      echo "$DOCK_NAMES" >&2
+      return 1
+    else
+      echo "No instances found" >&2
+      return 1
+  fi
+
+  # Если аргумент есть и в нём только цифры
+  elif echo "$1" | grep -Eq '^[0-9]+$'; then
+    DOCK_NAME=$(docker container ls -a \
+      --format "{{.Names}}" \
+      --filter label=$PREFIX.instance \
+      --filter name=$PREFIX | grep \\-$1) || true
+    if [ $(echo "$DOCK_NAME" | wc -l) -gt 1 ]; then
+      echo number is ambigous: $DOCK_NAME >&2
+      return 1
+    fi
+
+  # Иначе - аргумент - путь
+  else
+    DOCK_NAME=$(docker container ls -a \
+      --format "{{.Names}}" \
+      --filter label=$PREFIX.path=$(realpath $1) \
+      --filter name=$PREFIX
+      )
+    if [ $(echo "$DOCK_NAME" | wc -l) -gt 1 ]; then
+      echo path is ambigous: $DOCK_NAME >&2
+      return 1
+    fi
+  fi
+
+  if [ -z "$DOCK_NAME" ]; then
+    echo "Instance not found" >&2
+    return 1
+  fi
+
+  echo "${DOCK_NAME: -$INSTANCE_NO_LEN}"
+}
+
+term(){
+  INSTANCE_NO=$(get_no $1)
+  CONTAINER=$PREFIX-$NO
+  docker exec -it -u $DOCK_USER $PREFIX-$INSTANCE_NO bash -c "source /etc/environment && bash"
+}
+
+clean(){
+  LIST=$(docker ps -a --filter label=$PREFIX -q)
+  if [ -z "$LIST" ]; then
+    exit 0
+  fi
+  docker rm -f $LIST
+}
+
+list(){
+  LIST=$(docker ps -a --filter label=$PREFIX.path -q)
+  if [ -z "$LIST" ]; then
+    exit 0
+  fi
+  FORMAT="{{.Name}}   {{index .Config.Labels \"$PREFIX.path\"}}   {{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}   {{range \$port, \$bindings := .NetworkSettings.Ports}}{{\$port}}:{{if \$bindings}}{{(index \$bindings 0).HostPort}}{{end}} {{end}}"
+  docker inspect --format "$FORMAT" $(docker ps -a --filter label=$PREFIX.path -q)
+}
+
+getip(){
+  NO=$(get_no $2)
+  docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $PREFIX-$NO
+}
+
+upgrade(){
+  NO=$(get_no $2)
+  LIST=$(docker ps --filter name=$NO -q)
+  if [ -z "$LIST" ]; then
+    exit 1
+  fi
+  docker commit $LIST $IMAGE_NAME
+}
+
+exec(){
+  NO=$(get_no $2)
+  docker exec -i -u $DOCK_USER $PREFIX-$NO bash -c "source etc/environment && $3"
+}
+
+dexec(){
+  NO=$(get_no $2)
+  docker exec -d -u $DOCK_USER $PREFIX-$NO bash -c "source etc/environment && $3"
+}

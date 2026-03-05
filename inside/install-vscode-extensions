@@ -1,0 +1,67 @@
+#!/bin/bash
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: $(basename $0) [extension name] ..."
+    exit 1
+fi
+
+if [[ -z "$USER" ]]; then
+    echo "USER not set"
+    exit 1
+fi
+
+set -e
+
+rm -rf /tmp/extension-install
+rm -rf /home/$USER/.vscode-server/extensions
+
+for extension_id in "$@"; do
+  echo Installing $extension_id
+
+  PUBLISHER="${extension_id%.*}"
+  EXTENSION_NAME="${extension_id#*.}"
+
+  VERSION=$(curl -m 10 -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json;api-version=3.0-preview.1' \
+    --data-binary "{
+      \"assetTypes\": null,
+      \"filters\": [
+          {
+              \"criteria\": [
+                  {
+                     \"filterType\": 8,
+                     \"value\": \"Microsoft.VisualStudio.Code\"
+                  },
+                  {
+                      \"filterType\": 10,
+                      \"value\": \"$extension_id\"
+                  }
+		],
+              \"direction\": 2,
+              \"pageSize\": 5,
+              \"pageNumber\": 1,
+              \"sortBy\": 0,
+              \"sortOrder\": 0,
+              \"pagingToken\": null
+          }
+      ],
+      \"flags\": 2151
+  }" | grep -oP 'versions":\[{"version":"\K[^"]+' | head -n 1 || true )
+
+  if [[ -z "$VERSION" ]]; then
+      echo Error: Extension $extension_id not found
+      continue
+  fi
+
+  wget -T 10 -O /home/$USER/extension.vsix https://$PUBLISHER.gallery.vsassets.io/_apis/public/gallery/publisher/$PUBLISHER/extension/$EXTENSION_NAME/$VERSION/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage
+
+  mkdir -p /tmp/extension-install
+  unzip -q /home/$USER/extension.vsix -d /tmp/extension-install
+  mkdir -p /home/$USER/.vscode-server/extensions/$extension_id
+  mv -f  /tmp/extension-install/extension/* /home/$USER/.vscode-server/extensions/$extension_id/
+  rm -rf /tmp/extension-install
+  rm /home/$USER/extension.vsix
+done
+
+chown -R $USER /home/$USER/.vscode-server

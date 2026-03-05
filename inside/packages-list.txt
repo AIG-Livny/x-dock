@@ -1,0 +1,9 @@
+wget
+curl
+sudo
+git
+pkg-config
+openssh-server
+bash-completion
+iputils-ping
+unzip

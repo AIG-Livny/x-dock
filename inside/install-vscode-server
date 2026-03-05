@@ -1,0 +1,28 @@
+#!/bin/bash
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: $(basename $0) [vscode commit sha]"
+    exit 1
+fi
+
+if [[ -z "$USER" ]]; then
+    echo "USER not set"
+    exit 1
+fi
+
+set -e
+
+VSCODE_COMMIT=$1
+
+mkdir -p /home/$USER/.vscode-server/cli/servers/Stable-$VSCODE_COMMIT/server
+curl -L https://update.code.visualstudio.com/commit:$VSCODE_COMMIT/server-linux-x64/stable --output server.tar.gz
+curl -L https://update.code.visualstudio.com/commit:$VSCODE_COMMIT/cli-alpine-x64/stable --output cli.tar.gz
+
+tar xzf server.tar.gz
+mv vscode-server-linux-x64/* /home/$USER/.vscode-server/cli/servers/Stable-$VSCODE_COMMIT/server/
+rm -rf vscode-server-linux-x64/
+rm server.tar.gz
+
+tar xzf cli.tar.gz
+mv code /home/$USER/.vscode-server/code-$VSCODE_COMMIT
+rm cli.tar.gz

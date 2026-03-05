@@ -1,0 +1,1 @@
+Acquire::http::Proxy-Auto-Detect "/etc/apt/apt.conf.d/apt-proxy-checker.sh";
