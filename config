@@ -1,17 +1,2 @@
-# Эти переменные используются при сборке образа, но не при работе конечного контейнера
-# Однако можно передать в контейнер, добавив их в environment_template
-
-export DOCK_USER=$USER
-export DOCK_PASS=user
-export DOCK_UID=$(id -u)
-export DOCK_GID=$(id -g)
-export PREFIX=entrance
-export APP_NAME=entrance
-export IMAGE_BASE=ubuntu:24.04
-export INSIDE_PATH=/inside
 export COMMON_INSIDE_PATH=/inside/common
-export APP_SRC_PATH=/uservice
-
-# Устанавливать VSCode Server и какой? Если в системе есть VSCode то будет взята его версия, иначе версия по умолчанию
-# Чтобы вообще не устанавливать сервер, закомментируйте строку ниже
-export VSCODE_COMMIT_DEFAULT=6f17636121051a53c88d3e605c491d22af2ba755
+export COMMON_VERSION="0.5"

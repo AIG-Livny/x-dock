@@ -1,0 +1,8 @@
+_{{APP_NAME}}_dock_completions() {
+    local curr_arg="${COMP_WORDS[COMP_CWORD]}"
+    if [ ${COMP_CWORD} -eq 1 ]; then
+        COMPREPLY=($(compgen -W "{{FUNCTIONS}}" -- "$curr_arg"))
+    fi
+}
+
+complete -F _{{APP_NAME}}_dock_completions {{APP_NAME}}-dock

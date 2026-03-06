@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -e
+
+DIR=$(dirname $(readlink -f $0))
+
+source $DIR/config
+
+# Пример кастомной команды
+INS_HELP="Запустить экземпляр. Требуется быть в папке с $APP_NAME для запуска"
+ins(){
+  # Минимальная проверка, что находимся в папке приложения
+  if [ ! -f "README.md" ] || ! grep -q "$APP_NAME" README.md; then
+    echo "Set current directory to $APP_NAME"
+    exit 1
+  fi
+
+  # Собрать образ, если его нет
+  if [ -z "$(docker images -q $ENV_IMAGE_NAME 2> /dev/null)" ]; then
+    makeimg
+  else
+    # Даже если образ есть, файла environment может не быть. Это происходит, если образ был перенесён с другой машины
+    if [ ! -e "$DIR/inside/environment" ]; then
+      makeenv
+    fi
+  fi
+
+  # Генерируем номер
+  INSTANCE_NO=$(_instance_no_generator)
+
+  CONTAINER=$PREFIX-$INSTANCE_NO
+
+  declare -a docker_run_args=()
+
+  # Порт 22 для ssh
+  # --security-opt для функции attach gdb, чтобы отладчик на живую подключать
+
+  docker_run_args+=(
+    "run"
+    "-dt"
+    "--name" "$CONTAINER"
+    "-e" "HOST_APP_PATH=$PWD"
+    "-h" "$CONTAINER"
+    "-p" "0:22"
+    "-v" "$PWD:$APP_SRC_PATH"
+    "-v" "$DIR/inside:$INSIDE_PATH"
+    "-v" "$DIR/common/inside:$COMMON_INSIDE_PATH"
+    "--cap-add=SYS_PTRACE"
+    "--security-opt" "apparmor=unconfined"
+    "--security-opt" "seccomp=unconfined"
+    "-l" "$PREFIX.instance=$INSTANCE_NO"
+    "-l" "$PREFIX.path=$PWD"
+    "-l" "$PREFIX"
+  )
+
+  ENV_ID=$(docker "${docker_run_args[@]}" "$IMAGE_NAME")
+  PORTS=$(docker port $ENV_ID | tr '\n' ' ')
+
+  docker exec $ENV_ID bash -c "$INSIDE_PATH/start.sh '$DOCK_USER' '$SSH_AUTH_SOCK' '$PORTS'"
+
+  term $ENV_ID
+}
+
+# Подключаем общую часть в самом конце
+source $DIR/common/common

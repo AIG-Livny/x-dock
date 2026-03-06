@@ -1,0 +1,29 @@
+# Эти переменные используются при сборке образа, но не при работе конечного контейнера
+# Однако можно передать в контейнер, добавив их в environment_template
+
+# Версия этого dock
+export DOCK_VERSION="1.0"
+
+# Креды для пользователя внутри конетейнера
+export DOCK_USER=$USER
+export DOCK_PASS=user
+export DOCK_UID=$(id -u)
+export DOCK_GID=$(id -g)
+# Базовый образ для контейнера-окружения
+export IMAGE_BASE=ubuntu:24.04
+
+# Путь к технической папке внутри контейнера
+export INSIDE_PATH=/inside
+
+# Префикс используется для докер контейнеров и образов
+export PREFIX=my-app-prefix
+
+# Имя выводится, например, в хелпе
+export APP_NAME=my-app-name
+
+# Путь где будут лежать исходники проекта внутри контейнера
+export APP_SRC_PATH=/uservice
+
+# Устанавливать VSCode Server и какой? Если в системе есть VSCode то будет взята его версия, иначе версия по умолчанию
+# Чтобы вообще не устанавливать сервер, закомментируйте строку ниже
+export VSCODE_COMMIT_DEFAULT=6f17636121051a53c88d3e605c491d22af2ba755

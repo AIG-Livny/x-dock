@@ -1,3 +1,5 @@
+set -e
+
 DIR=$(dirname $(readlink -f $0))
 
 source $DIR/common/config
@@ -6,15 +8,17 @@ IMAGE_NAME=$PREFIX-image
 
 # Генератор номера экземляра
 INSTANCE_NO_LEN=5
-instance_no_generator(){
+_instance_no_generator(){
   date +%s%N | cut -c 7-11
 }
 
+MAKEENV_HELP="Создать файл с переменными окружения. Используется внутри контейнера"
 makeenv(){
   # Комменты не переносим в итоговый файл
   grep -v '^#' $DIR/environment_template | envsubst > $DIR/inside/environment
 }
 
+MAKEIMG_HELP="Пересобрать docker образ оружения"
 makeimg(){
   CONTAINER=$PREFIX-image-builder
 
@@ -43,15 +47,15 @@ makeimg(){
   fi
 
   # Запускаем сборку образа
-  docker exec $CONTAINER bash -c \
+  docker exec -it $CONTAINER bash -c \
     "$INSIDE_PATH/make-image.sh '$DOCK_USER' '$DOCK_PASS' '$DOCK_UID' '$DOCK_GID' '$VSCODE_COMMIT'"
 
   # Создаём образ, удаляем контейнер
-  #docker commit $CONTAINER $IMAGE_NAME
+  docker commit $CONTAINER $IMAGE_NAME
   docker rm -f $CONTAINER
 }
 
-# Получить полный номер экземпляра из его части или по пути APP_NAME на хосте
+GETNO_HELP="Получить полный номер экземпляра из его части или по пути $APP_NAME на хосте"
 getno(){
   # Если аргумента нет, то проверим, возможно у нас единственный экземпляр и можно взять его
   if [ -z "$1" ]; then
@@ -105,12 +109,14 @@ getno(){
   echo "${DOCK_NAME: -$INSTANCE_NO_LEN}"
 }
 
+TERM_HELP="[id?] - Открыть терминал окружения выбранного экземпляра"
 term(){
-  INSTANCE_NO=$(get_no $1)
+  INSTANCE_NO=$(getno $2)
   CONTAINER=$PREFIX-$NO
   docker exec -it -u $DOCK_USER $PREFIX-$INSTANCE_NO bash -c "source /etc/environment && bash"
 }
 
+CLEAN_HELP="Удалить все контейнеры принадлежащие $APP_NAME-dock"
 clean(){
   LIST=$(docker ps -a --filter label=$PREFIX -q)
   if [ -z "$LIST" ]; then
@@ -119,6 +125,7 @@ clean(){
   docker rm -f $LIST
 }
 
+LIST_HELP="Перечислить все образы и контейнеры принадлежащие $APP_NAME-dock"
 list(){
   LIST=$(docker ps -a --filter label=$PREFIX.path -q)
   if [ -z "$LIST" ]; then
@@ -128,13 +135,15 @@ list(){
   docker inspect --format "$FORMAT" $(docker ps -a --filter label=$PREFIX.path -q)
 }
 
+GETIP_HELP="[id?] - Получить ip адрес контейнера-окружения из экземпляра"
 getip(){
-  NO=$(get_no $2)
+  NO=$(getno $2)
   docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $PREFIX-$NO
 }
 
+UPGRADE_HELP="[id?] - Обновить образ из выбранного контейнера"
 upgrade(){
-  NO=$(get_no $2)
+  NO=$(getno $2)
   LIST=$(docker ps --filter name=$NO -q)
   if [ -z "$LIST" ]; then
     exit 1
@@ -142,12 +151,80 @@ upgrade(){
   docker commit $LIST $IMAGE_NAME
 }
 
+EXEC_HELP="[id] [cmd] - Запустить команду внутри контейнера в интерактивном режиме"
 exec(){
-  NO=$(get_no $2)
+  NO=$(getno $2)
   docker exec -i -u $DOCK_USER $PREFIX-$NO bash -c "source etc/environment && $3"
 }
 
+DEXEC_HELP="[id] [cmd] - Запустить команду внутри контейнера в detached режиме"
 dexec(){
-  NO=$(get_no $2)
+  NO=$(getno $2)
   docker exec -d -u $DOCK_USER $PREFIX-$NO bash -c "source etc/environment && $3"
 }
+
+KILL_HELP="[id?] - Удалить выбранный экземпляр"
+kill(){
+  NO=$(getno $2)
+  LIST=$(docker ps --filter name=$NO -q)
+  if [ -z "$LIST" ]; then
+    exit 0
+  fi
+  docker rm -f $LIST
+}
+
+_get_functions(){
+  # Исключаем функции начинающиеся на _
+  declare -F | awk '{print $3}' | grep -vE '^_' | xargs | sort
+}
+
+HELP_HELP="Справка"
+help(){
+  FUNCTIONS=$(_get_functions)
+
+  echo "$APP_NAME-dock ver.$DOCK_VERSION, x-dock ver.$COMMON_VERSION"
+
+  for func in $FUNCTIONS; do
+    local help_var="${func^^}_HELP"
+    local description="${!help_var}"
+
+    printf "  %-15s %s\n" "$func" "$description"
+  done
+}
+
+INSTALL_HELP="Установить $APP_NAME-dock в систему"
+install(){
+  #Cимвольная ссылка на dock, чтобы попало в PATH
+  mkdir -p ~/.local/bin
+  ln -sf $(realpath $DIR/dock) ~/.local/bin/$APP_NAME-dock
+
+  # Если в системе установлен bash-completion то ставим скрипт
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    USER_COMP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$USER_COMP_DIR"
+
+    FUNCTIONS=$(_get_functions)
+
+    sed -e "s/{{APP_NAME}}/$APP_NAME/g" \
+        -e "s/{{FUNCTIONS}}/$FUNCTIONS/g" \
+        "$DIR/common/completion.template" > "$USER_COMP_DIR/$APP_NAME-dock"
+  fi
+  echo "installed"
+}
+
+UNINSTALL_HELP="Удалить $APP_NAME-dock из системы"
+uninstall(){
+  rm -f ~/.local/bin/$APP_NAME-dock
+  USER_COMP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+
+  rm -f $USER_COMP_DIR/$APP_NAME-dock
+
+  echo "deleted"
+}
+
+if declare -f "$1" > /dev/null; then
+    "$1" "$@"
+else
+    echo "Unknown command: '$1'" 2>&1
+    exit 1
+fi

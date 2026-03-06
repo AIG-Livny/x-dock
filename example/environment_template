@@ -1,0 +1,20 @@
+# Шаблон для генерации /etc/environment файла
+
+# Проброс из config в конечный контейнер
+export INSIDE_PATH=${INSIDE_PATH}
+export APP_SRC_PATH=${APP_SRC_PATH}
+
+export LANG=ru_RU.UTF-8
+
+export PATH=\
+/usr/local/sbin:\
+/usr/local/bin:\
+/usr/sbin:\
+/usr/bin:\
+/sbin:\
+/bin:\
+/usr/local/go/bin:\
+${INSIDE_PATH}/scripts:\
+${COMMON_INSIDE_PATH}/scripts
+
+export TERM=xterm-256color
