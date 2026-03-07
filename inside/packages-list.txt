@@ -7,4 +7,3 @@ openssh-server
 bash-completion
 iputils-ping
 unzip
-locales

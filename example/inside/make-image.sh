@@ -14,9 +14,9 @@ ln -s $INSIDE_PATH/*.list /etc/apt/sources.list.d/
 DEBIAN_FRONTEND=noninteractive apt install -yqq $(cat $INSIDE_PATH/packages-list.txt)
 
 # Локали
-cp $INSIDE_PATH/locale.gen /etc
-locale-gen
-localedef -i ru_RU -c -f UTF-8 -A /usr/share/locale/locale.alias ru_RU.UTF-8
+#cp $INSIDE_PATH/locale.gen /etc
+#locale-gen
+#localedef -i ru_RU -c -f UTF-8 -A /usr/share/locale/locale.alias ru_RU.UTF-8
 
 ## Настройка пользователя
 
