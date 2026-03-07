@@ -8,7 +8,9 @@ set -e
 source $COMMON_INSIDE_PATH/header-make-image
 
 # Если есть файлы зеркал - копируем
-ln -s $INSIDE_PATH/*.list /etc/apt/sources.list.d/
+if ls $INSIDE_PATH/*.list >/dev/null 2>&1; then
+    ln -sf $INSIDE_PATH/*.list /etc/apt/sources.list.d/
+fi
 
 # Установка пакетов из списка packages-list.txt
 DEBIAN_FRONTEND=noninteractive apt install -yqq $(cat $INSIDE_PATH/packages-list.txt)
