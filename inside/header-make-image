@@ -6,7 +6,7 @@ VSCODE_COMMIT=$5
 
 # Для обнаружения кеширующего прокси на хосте
 ln -s $COMMON_INSIDE_PATH/01proxy /etc/apt/apt.conf.d/
-ln -s $COMMON_INSIDE_PATH/apt-proxy-checker.sh /etc/apt/apt.conf.d/
+ln -s $COMMON_INSIDE_PATH/apt-proxy-checker.sh /etc/apt/
 
 # Переменные окружения
 ln -sf $INSIDE_PATH/environment /etc/
