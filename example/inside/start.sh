@@ -3,12 +3,12 @@
 #
 # Финальный этап запуска контейнера
 #
+# Окружение экземпляра (в т.ч. DOCK_PORTS) уже лежит в /etc/environment:
+# файл создаётся на хосте при создании экземпляра и копируется в контейнер
+#
 
-DOCK_USER=$1
-SSH_AUTH_SOCK=$2
-DOCK_PORTS=$3
+DOCK_USER="$1"
 
-echo -e "\n" >> /etc/environment
-echo "export DOCK_PORTS='$DOCK_PORTS'" >> /etc/environment
+source /etc/environment
 
 service ssh start

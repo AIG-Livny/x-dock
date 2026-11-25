@@ -56,9 +56,31 @@ ins(){
   ENV_ID=$(docker "${docker_run_args[@]}" "$IMAGE_NAME")
   PORTS=$(docker port $ENV_ID | tr '\n' ' ')
 
-  docker exec $ENV_ID bash -c "$INSIDE_PATH/start.sh '$DOCK_USER' '$SSH_AUTH_SOCK' '$PORTS'"
+  # Окружение экземпляра: базовый шаблон + данные, относящиеся только к этому экземпляру.
+  # Файл создаётся на хосте и копируется внутрь контейнера, поэтому экземпляры не делят
+  # один /etc/environment
+  INSTANCE_ENV=$(mktemp)
+  trap "rm -f $INSTANCE_ENV" EXIT
 
-  term $ENV_ID
+  _render_env $INSTANCE_ENV
+
+  if [ -n "$SSH_AUTH_SOCK" ]; then
+    echo "export SSH_AUTH_SOCK=/ssh-agent" >> $INSTANCE_ENV
+  fi
+
+  {
+    echo "export HOST_APP_PATH='$PWD'"
+    echo "export DOCK_PORTS='$PORTS'"
+  } >> $INSTANCE_ENV
+
+  _put_env $ENV_ID $INSTANCE_ENV
+  rm -f $INSTANCE_ENV
+  trap - EXIT
+
+  # Окружение уже в контейнере, start.sh его подхватывает
+  docker exec $ENV_ID bash -c "$INSIDE_PATH/start.sh '$DOCK_USER'"
+
+  _open_term $ENV_ID
 }
 
 # Подключаем общую часть в самом конце

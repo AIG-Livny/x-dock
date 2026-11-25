@@ -13,10 +13,15 @@ _instance_no_generator(){
   date +%s%N | cut -c 7-11
 }
 
-MAKEENV_HELP="Создать файл с переменными окружения. Используется внутри контейнера"
+# Отрендерить environment_template в указанный файл (комменты не переносим)
+_render_env(){
+  ENV_DST=$1
+  grep -v '^#' $DIR/environment_template | envsubst > $ENV_DST
+}
+
+MAKEENV_HELP="Создать базовый файл с переменными окружения. Используется при сборке образа"
 makeenv(){
-  # Комменты не переносим в итоговый файл
-  grep -v '^#' $DIR/environment_template | envsubst > $DIR/inside/environment
+  _render_env $DIR/inside/environment
 }
 
 MAKEIMG_HELP="Пересобрать docker образ оружения"
@@ -117,11 +122,30 @@ getno(){
   echo "${DOCK_NAME##*-}"
 }
 
+# Скопировать готовый файл окружения в контейнер как /etc/environment.
+# В старых образах /etc/environment - симлинк на общий файл из bind-mount ($INSIDE_PATH),
+# поэтому сначала удаляем его внутри контейнера: иначе docker cp пойдёт по симлинку и
+# запишет данные экземпляра в общий для всех экземпляров файл на хосте
+_put_env(){
+  CONTAINER=$1
+  ENV_SRC=$2
+  docker exec -u root $CONTAINER rm -f /etc/environment
+  docker cp "$ENV_SRC" $CONTAINER:/etc/environment
+  # cp переносит владельца и права хостового файла, а /etc/environment читают все пользователи
+  docker exec -u root $CONTAINER bash -c 'chown root:root /etc/environment && chmod 644 /etc/environment'
+}
+
+# Открыть терминал в контейнере. $1 - имя или id контейнера-окружения.
+# Вынесено отдельно, чтобы ins мог открыть терминал в только что созданном контейнере,
+# не вычисляя номер экземпляра (экземпляров может быть несколько)
+_open_term(){
+  docker exec -it -u $DOCK_USER "$1" bash -c "source /etc/environment && bash"
+}
+
 TERM_HELP="[id?] - Открыть терминал окружения выбранного экземпляра"
 term(){
   INSTANCE_NO=$(getno $2)
-  CONTAINER=$PREFIX-$NO
-  docker exec -it -u $DOCK_USER $PREFIX-$INSTANCE_NO bash -c "source /etc/environment && bash"
+  _open_term $PREFIX-$INSTANCE_NO
 }
 
 CLEAN_HELP="Удалить все контейнеры принадлежащие $APP_NAME-dock"
