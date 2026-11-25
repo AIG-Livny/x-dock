@@ -9,6 +9,7 @@ IMAGE_NAME=$PREFIX-image
 # Генератор номера экземляра
 INSTANCE_NO_LEN=5
 _instance_no_generator(){
+  # Используем последние 5 цифр нано-секунд для уникальности
   date +%s%N | cut -c 7-11
 }
 
@@ -24,6 +25,9 @@ makeimg(){
 
   # Чистим от старых контейнеров
   docker rm -f $CONTAINER > /dev/null 2>&1 || true
+
+  # Если что-то пойдёт не так, удалим контейнер сборки
+  trap "docker rm -f $CONTAINER 2>/dev/null || true" EXIT
 
   makeenv
 
@@ -53,16 +57,27 @@ makeimg(){
   # Создаём образ, удаляем контейнер
   docker commit $CONTAINER $IMAGE_NAME
   docker rm -f $CONTAINER
+  
+  # Если дошли сюда, всё успешно, не нужно чистить
+  trap - EXIT
+}
+
+# Имена контейнеров-окружений. В экземпляре кроме окружения $PREFIX-<номер> могут быть
+# вспомогательные контейнеры (например базы $PREFIX-pg-<номер> и $PREFIX-ora-<номер>),
+# поэтому оставляем только те, чьё имя целиком имеет вид $PREFIX-<номер>
+_instance_names(){
+  docker container ls -a \
+    --format "{{.Names}}" \
+    --filter label=$PREFIX.instance \
+    --filter name=$PREFIX \
+    "$@" | grep -E "^$PREFIX-[0-9]+$" || true
 }
 
 GETNO_HELP="Получить полный номер экземпляра из его части или по пути $APP_NAME на хосте"
 getno(){
   # Если аргумента нет, то проверим, возможно у нас единственный экземпляр и можно взять его
   if [ -z "$1" ]; then
-    DOCK_NAMES=$(docker container ls -a \
-      --format "{{.Names}}" \
-      --filter label=$PREFIX.instance \
-      --filter name=$PREFIX)
+    DOCK_NAMES=$(_instance_names)
 
     COUNT=$(echo "$DOCK_NAMES" | grep -c . || true)
 
@@ -79,10 +94,7 @@ getno(){
 
   # Если аргумент есть и в нём только цифры
   elif echo "$1" | grep -Eq '^[0-9]+$'; then
-    DOCK_NAME=$(docker container ls -a \
-      --format "{{.Names}}" \
-      --filter label=$PREFIX.instance \
-      --filter name=$PREFIX | grep \\-$1) || true
+    DOCK_NAME=$(_instance_names | grep \\-$1) || true
     if [ $(echo "$DOCK_NAME" | wc -l) -gt 1 ]; then
       echo number is ambigous: $DOCK_NAME >&2
       return 1
@@ -90,11 +102,7 @@ getno(){
 
   # Иначе - аргумент - путь
   else
-    DOCK_NAME=$(docker container ls -a \
-      --format "{{.Names}}" \
-      --filter label=$PREFIX.path=$(realpath $1) \
-      --filter name=$PREFIX
-      )
+    DOCK_NAME=$(_instance_names --filter "label=$PREFIX.path=$(realpath $1)")
     if [ $(echo "$DOCK_NAME" | wc -l) -gt 1 ]; then
       echo path is ambigous: $DOCK_NAME >&2
       return 1
@@ -106,7 +114,7 @@ getno(){
     return 1
   fi
 
-  echo "${DOCK_NAME: -$INSTANCE_NO_LEN}"
+  echo "${DOCK_NAME##*-}"
 }
 
 TERM_HELP="[id?] - Открыть терминал окружения выбранного экземпляра"
@@ -144,29 +152,32 @@ getip(){
 UPGRADE_HELP="[id?] - Обновить образ из выбранного контейнера"
 upgrade(){
   NO=$(getno $2)
-  LIST=$(docker ps --filter name=$NO -q)
-  if [ -z "$LIST" ]; then
+  CONTAINER=$PREFIX-$NO
+  # Коммитим именно контейнер-окружение: в экземпляре могут быть и другие контейнеры (базы)
+  if ! _instance_names | grep -qx "$CONTAINER"; then
     exit 1
   fi
-  docker commit $LIST $IMAGE_NAME
+  docker commit $CONTAINER $IMAGE_NAME
 }
 
 EXEC_HELP="[id] [cmd] - Запустить команду внутри контейнера в интерактивном режиме"
 exec(){
   NO=$(getno $2)
-  docker exec -i -u $DOCK_USER $PREFIX-$NO bash -c "source etc/environment && $3"
+  docker exec -i -u $DOCK_USER $PREFIX-$NO bash -c "source /etc/environment && $3"
 }
 
 DEXEC_HELP="[id] [cmd] - Запустить команду внутри контейнера в detached режиме"
 dexec(){
   NO=$(getno $2)
-  docker exec -d -u $DOCK_USER $PREFIX-$NO bash -c "source etc/environment && $3"
+  docker exec -d -u $DOCK_USER $PREFIX-$NO bash -c "source /etc/environment && $3"
 }
 
 KILL_HELP="[id?] - Удалить выбранный экземпляр"
 kill(){
   NO=$(getno $2)
-  LIST=$(docker ps --filter name=$NO -q)
+  # Удаляем все контейнеры экземпляра (окружение и вспомогательные, например базы),
+  # в том числе остановленные
+  LIST=$(docker ps -a --filter label=$PREFIX.instance=$NO -q)
   if [ -z "$LIST" ]; then
     exit 0
   fi
